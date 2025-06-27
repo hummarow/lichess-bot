@@ -1,15 +1,18 @@
-"""
-Some example classes for people who want to create a homemade bot.
 
-With these classes, bot makers will not have to implement the UCI or XBoard interfaces themselves.
-"""
+# Some example classes for people who want to create a homemade bot.
+
+# With these classes, bot makers will not have to implement the UCI or XBoard interfaces themselves.
+
 import chess
 from chess.engine import PlayResult, Limit
 import random
 from lib.engine_wrapper import MinimalEngine
 from lib.lichess_types import MOVE, HOMEMADE_ARGS_TYPE
 import logging
-
+import os
+from dotenv import load_dotenv
+import openai
+import anthropic
 
 # Use this logger variable to print messages to the console or log files.
 # logger.info("message") will always print "message" to the console or log file.
@@ -94,3 +97,78 @@ class ComboEngine(ExampleEngine):
             possible_moves.sort(key=str)
             move = possible_moves[0]
         return PlayResult(move, None, draw_offered=draw_offered)
+
+
+class LLMEngine(ExampleEngine):
+    """
+    A chess engine that uses a Large Language Model (LLM) to choose moves.
+    Supports OpenAI and Anthropic (Claude) models.
+    """
+    def __init__(self, llm_type: str, model_name: str):
+        load_dotenv()  # Load environment variables from .env file
+        self.llm_type = llm_type
+        self.model_name = model_name
+        self.client = None
+
+        if self.llm_type == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable not set.")
+            self.client = openai.OpenAI(api_key=api_key)
+        elif self.llm_type == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY environment variable not set.")
+            self.client = anthropic.Anthropic(api_key=api_key)
+        else:
+            raise ValueError(f"Unsupported LLM type: {llm_type}. Choose 'openai' or 'anthropic'.")
+
+    def _get_llm_response(self, prompt: str, system_message: str) -> str:
+        if self.llm_type == "openai":
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=10,  # A move is short (e.g., e2e4)
+                temperature=0.1,
+            )
+            return response.choices[0].message.content.strip()
+        elif self.llm_type == "anthropic":
+            response = self.client.messages.create(
+                model=self.model_name,
+                max_tokens=10,
+                messages=[
+                    {"role": "user", "content": system_message + "\n" + prompt}
+                ],
+                temperature=0.1,
+            )
+            return response.content[0].text.strip()
+        return ""
+
+    def search(self, board: chess.Board, *args: HOMEMADE_ARGS_TYPE) -> PlayResult:
+        fen = board.fen()
+        legal_moves = {move.uci() for move in board.legal_moves}
+        system_message = "You are a chess grandmaster. Given a FEN string, provide only the optimal chess move in UCI format (e.g., 'e2e4'). Do not include any other text or explanation."
+
+        retries = 3
+        for i in range(retries):
+            prompt = f"Current FEN: {fen}"
+            if i > 0:
+                prompt += f" (Previous attempt returned an invalid move. Please provide a valid UCI move from the legal moves: {', '.join(sorted(list(legal_moves)))})"
+
+            try:
+                llm_move_uci = self._get_llm_response(prompt, system_message)
+                logger.info(f"LLM suggested move: {llm_move_uci}")
+
+                if llm_move_uci in legal_moves:
+                    move = chess.Move.from_uci(llm_move_uci)
+                    return PlayResult(move, None)
+                else:
+                    logger.warning(f"LLM returned an illegal move: {llm_move_uci}. Legal moves are: {', '.join(sorted(list(legal_moves)))}")
+            except Exception as e:
+                logger.error(f"Error getting LLM response: {e}")
+
+        logger.error("LLM failed to provide a valid move after multiple retries. Falling back to a random legal move.")
+        return PlayResult(random.choice(list(board.legal_moves)), None)

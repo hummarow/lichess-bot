@@ -1,0 +1,98 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game {{ game_id }}</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .board {
+            width: 400px;
+            height: 400px;
+        }
+        .move-details {
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Game {{ game_id }}</h1>
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <h4>Before Move</h4>
+                <div id="board-before" class="board"></div>
+            </div>
+            <div class="col-md-6">
+                <h4>After Move</h4>
+                <div id="board-after" class="board"></div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <h3>Move Details (<span id="player-info"></span>)</h3>
+                <pre id="move-details" class="move-details"></pre>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <button id="prev-move" class="btn btn-primary">Previous</button>
+                <button id="next-move" class="btn btn-primary">Next</button>
+                <span id="move-counter" class="ml-3"></span>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let gameId = "{{ game_id }}";
+            let moveIndex = 0;
+            let totalMoves = {{ game_data.moves|length }};
+
+            function loadMove(index) {
+                $.ajax({
+                    url: "/get_move_data",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ game_id: gameId, move_index: index }),
+                    success: function(response) {
+                        $("#board-before").html(response.board_before_svg);
+                        $("#board-after").html(response.board_after_svg);
+                        
+                        let details = `Move UCI: ${response.move_uci}\n`;
+                        if (response.llm_response) {
+                            details += `Reason: ${response.llm_response.reason}\n`;
+                            details += `Principle Variation: ${response.llm_response.principle_variation}\n`;
+                            details += `Tactic: ${response.llm_response.tactic}\n`;
+                            details += `Strategy: ${response.llm_response.strategy}\n`;
+                        }
+                        $("#move-details").text(details);
+                        $("#player-info").text(`Player: ${response.player}`);
+
+                        $("#move-counter").text(`Move ${index + 1} of ${totalMoves}`);
+                        moveIndex = index;
+                        $("#prev-move").prop("disabled", moveIndex === 0);
+                        $("#next-move").prop("disabled", moveIndex === totalMoves - 1);
+                    }
+                });
+            }
+
+            $("#prev-move").click(function() {
+                if (moveIndex > 0) {
+                    loadMove(moveIndex - 1);
+                }
+            });
+
+            $("#next-move").click(function() {
+                if (moveIndex < totalMoves - 1) {
+                    loadMove(moveIndex + 1);
+                }
+            });
+
+            loadMove(0);
+        });
+    </script>
+</body>
+</html>

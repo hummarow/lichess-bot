@@ -291,21 +291,23 @@ def validate_config(CONFIG: CONFIG_DICT_TYPE) -> None:
     check_config_section(CONFIG, "url", str)
     check_config_section(CONFIG, "engine", dict)
     check_config_section(CONFIG, "challenge", dict)
-    check_config_section(CONFIG, "dir", str, "engine")
-    check_config_section(CONFIG, "name", str, "engine")
 
-    config_assert(os.path.isdir(CONFIG["engine"]["dir"]),
-                  f'Your engine directory `{CONFIG["engine"]["dir"]}` is not a directory.')
+    if CONFIG["engine"]["protocol"] != "homemade":
+        check_config_section(CONFIG, "dir", str, "engine")
+        check_config_section(CONFIG, "name", str, "engine")
 
-    working_dir = CONFIG["engine"].get("working_dir")
-    config_assert(not working_dir or os.path.isdir(working_dir),
-                  f"Your engine's working directory `{working_dir}` is not a directory.")
+        config_assert(os.path.isdir(CONFIG["engine"]["dir"]),
+                      f'Your engine directory `{CONFIG["engine"]["dir"]}` is not a directory.')
 
-    engine = os.path.join(CONFIG["engine"]["dir"], CONFIG["engine"]["name"])
-    config_assert(os.path.isfile(engine) or CONFIG["engine"]["protocol"] == "homemade",
-                  f"The engine {engine} file does not exist.")
-    config_assert(os.access(engine, os.X_OK) or CONFIG["engine"]["protocol"] == "homemade",
-                  f"The engine {engine} doesn't have execute (x) permission. Try: chmod +x {engine}")
+        working_dir = CONFIG["engine"].get("working_dir")
+        config_assert(not working_dir or os.path.isdir(working_dir),
+                      f"Your engine's working directory `{working_dir}` is not a directory.")
+
+        engine = os.path.join(CONFIG["engine"]["dir"], CONFIG["engine"]["name"])
+        config_assert(os.path.isfile(engine),
+                      f"The engine {engine} file does not exist.")
+        config_assert(os.path.islink(engine) or os.access(engine, os.X_OK),
+                      f"The engine {engine} doesn't have execute (x) permission. Try: chmod +x {engine}")
 
     if CONFIG["engine"]["protocol"] == "xboard":
         for section, subsection in (("online_moves", "online_egtb"),
