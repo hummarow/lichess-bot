@@ -12,7 +12,6 @@ import logging
 import os
 from dotenv import load_dotenv
 import openai
-import anthropic
 
 # Use this logger variable to print messages to the console or log files.
 # logger.info("message") will always print "message" to the console or log file.
@@ -102,7 +101,7 @@ class ComboEngine(ExampleEngine):
 class LLMEngine(ExampleEngine):
     """
     A chess engine that uses a Large Language Model (LLM) to choose moves.
-    Supports OpenAI and Anthropic (Claude) models.
+    Supports OpenAI models.
     """
     def __init__(self, llm_type: str, model_name: str):
         load_dotenv()  # Load environment variables from .env file
@@ -115,13 +114,8 @@ class LLMEngine(ExampleEngine):
             if not api_key:
                 raise ValueError("OPENAI_API_KEY environment variable not set.")
             self.client = openai.OpenAI(api_key=api_key)
-        elif self.llm_type == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if not api_key:
-                raise ValueError("ANTHROPIC_API_KEY environment variable not set.")
-            self.client = anthropic.Anthropic(api_key=api_key)
         else:
-            raise ValueError(f"Unsupported LLM type: {llm_type}. Choose 'openai' or 'anthropic'.")
+            raise ValueError(f"Unsupported LLM type: {llm_type}. Choose 'openai'.")
 
     def _get_llm_response(self, prompt: str, system_message: str) -> str:
         if self.llm_type == "openai":
@@ -135,16 +129,6 @@ class LLMEngine(ExampleEngine):
                 temperature=0.1,
             )
             return response.choices[0].message.content.strip()
-        elif self.llm_type == "anthropic":
-            response = self.client.messages.create(
-                model=self.model_name,
-                max_tokens=10,
-                messages=[
-                    {"role": "user", "content": system_message + "\n" + prompt}
-                ],
-                temperature=0.1,
-            )
-            return response.content[0].text.strip()
         return ""
 
     def search(self, board: chess.Board, *args: HOMEMADE_ARGS_TYPE) -> PlayResult:

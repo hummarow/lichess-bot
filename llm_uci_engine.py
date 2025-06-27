@@ -9,7 +9,6 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 import openai
-import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
 # Setup logging for the UCI engine
@@ -83,13 +82,8 @@ class LLMEngine:
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY environment variable not set.")
                 self.client = openai.OpenAI(api_key=api_key)
-            elif self.llm_type == "anthropic":
-                api_key = os.getenv("ANTHROPIC_API_KEY")
-                if not api_key:
-                    raise ValueError("ANTHROPIC_API_KEY environment variable not set.")
-                self.client = anthropic.Anthropic(api_key=api_key)
             else:
-                raise ValueError(f"Unsupported LLM type: {llm_type}. Choose 'openai' or 'anthropic'.")
+                raise ValueError(f"Unsupported LLM type: {llm_type}. Choose 'openai'.")
             logger.debug("LLM client initialized successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize LLM client: {e}")
@@ -137,33 +131,6 @@ class LLMEngine:
                 )
                 logger.debug(f"Parsed response: {parsed_response}")
                 return parsed_response.output[0].content[0].parsed
-            elif self.llm_type == "anthropic":
-                # Anthropic does not directly support response_model like OpenAI
-                # We instruct it to return JSON and parse it manually
-                # The last message in messages is the user prompt
-                user_prompt = messages[-1]["content"]
-                system_message_content = messages[0]["content"] if messages[0]["role"] == "system" else ""
-
-                full_prompt = f"{system_message_content}\n\n{user_prompt}\n\n{{'move': 'e2e4', 'reason': '...', 'principle_variation': '...', 'tactic': '...', 'strategy': '...'}}"
-                
-                response = self.client.messages.create(
-                    model=self.model_name,
-                    max_tokens=200, # Increased max_tokens to accommodate new fields
-                    messages=[
-                        {"role": "user", "content": full_prompt}
-                    ],
-                    temperature=0.5,
-                )
-                raw_response_content = response.content[0].text.strip()
-                logger.debug(f"Anthropic raw response: {raw_response_content}")
-                # Attempt to parse JSON and validate with Pydantic
-                try:
-                    json_data = json.loads(raw_response_content)
-                    return ChessMoveResponse(**json_data)
-                except (json.JSONDecodeError, ValidationError) as e:
-                    logger.error(f"Failed to parse Anthropic response as ChessMoveResponse: {e}")
-                    raise ValueError("Invalid response format from Anthropic LLM.") from e
-            
             raise ValueError("Unsupported LLM type for _get_llm_response.")
         except Exception as e:
             logger.error(f"Error during LLM API call: {e}")
